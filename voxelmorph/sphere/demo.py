@@ -63,5 +63,5 @@ def lookshape(filename):
 
 if __name__ == '__main__':
     lookshape(test_data)
-    # median_normalization(input)
-    # tif2npz(input, output)
+    median_normalization(input)
+    tif2npz(input, output)
