@@ -5,6 +5,12 @@ import numpy as np
 
 from . import py
 
+def meannormalize(sub_data):
+
+    mean = np.mean(sub_data)
+    std = np.std(sub_data)
+    norm = (sub_data - mean) / std
+    return norm
 
 def volgen(
     vol_names,
@@ -52,7 +58,12 @@ def volgen(
         load_params = dict(np_var=np_var, add_batch_axis=True, add_feat_axis=add_feat_axis,
                            pad_shape=pad_shape, resize_factor=resize_factor)
         imgs = [py.utils.load_volfile(vol_names[i], **load_params) for i in indices]
-        vols = [np.concatenate(imgs, axis=0)]
+
+        vols_temp = np.concatenate(imgs, axis=0)
+        vols = meannormalize(vols_temp)
+
+        vols = [vols]
+
 
         # optionally load segmentations and concatenate
         if segs is True:
