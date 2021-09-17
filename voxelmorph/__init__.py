@@ -22,6 +22,19 @@ if backend == 'pytorch':
     from .torch import networks
     from .torch import losses
 
+elif backend == 'sphere':
+    # the pytorch backend can be enabled by setting the VXM_BACKEND
+    # environment var to "sphere"
+    try:
+        import torch
+    except ImportError:
+        raise ImportError('Please install pytorch to use this voxelmorph backend')
+
+    from . import sphere
+    from .sphere import layers
+    from .sphere import networks
+    from .sphere import losses
+
 else:
     # tensorflow is default backend
     try:

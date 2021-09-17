@@ -41,8 +41,8 @@ import time
 import numpy as np
 import torch
 
-# import voxelmorph with pytorch backend
-os.environ['VXM_BACKEND'] = 'pytorch'
+# import voxelmorph with sphere backend
+os.environ['VXM_BACKEND'] = 'sphere'
 import voxelmorph as vxm  # nopep8
 
 # parse the commandline
