@@ -35,7 +35,6 @@ License.
 """
 
 import os
-import random
 import argparse
 import time
 import numpy as np
@@ -44,6 +43,7 @@ import torch
 # import voxelmorph with sphere backend
 os.environ['VXM_BACKEND'] = 'sphere'
 import voxelmorph as vxm  # nopep8
+from voxelmorph.sphere.utils import plot_loss_img
 
 # parse the commandline
 parser = argparse.ArgumentParser()
@@ -125,7 +125,7 @@ nb_gpus = len(gpus)
 device = 'cuda'
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 assert np.mod(args.batch_size, nb_gpus) == 0, \
-    'Batch size (%d) should be a multiple of the nr of gpus (%d)' % (args.batch_size, nb_devices)
+    'Batch size (%d) should be a multiple of the nr of gpus (%d)' % (args.batch_size, nb_gpus)
 
 # enabling cudnn determinism appears to speed up training by a lot
 torch.backends.cudnn.deterministic = not args.cudnn_nondet
@@ -179,12 +179,21 @@ else:
 losses += [vxm.losses.Grad('l2', loss_mult=args.int_downsize).loss]
 weights += [args.weight]
 
+# 记录loss值和最优epoch
+all_loss = list()  # 保存2个部分的loss
+all_total_loss = list()  # 保存2个部分loss的和
+best_epoch = 0
+best_loss = np.inf
+
 # training loops
 for epoch in range(args.initial_epoch, args.epochs):
 
     # save model checkpoint
-    if epoch % 20 == 0:
+    if epoch % 50 == 0:
         model.save(os.path.join(model_dir, '%04d.pt' % epoch))
+    # save image loss
+    if epoch % 10 == 0:
+        plot_loss_img(all_total_loss, 'image_loss.png')
 
     epoch_loss = []
     epoch_total_loss = []
@@ -221,12 +230,32 @@ for epoch in range(args.initial_epoch, args.epochs):
         # get compute time
         epoch_step_time.append(time.time() - step_start_time)
 
+    epoch_loss = np.mean(epoch_loss, axis=0)
+    epoch_total_loss = np.mean(epoch_total_loss)
+
     # print epoch info
     epoch_info = 'Epoch %d/%d' % (epoch + 1, args.epochs)
     time_info = '%.4f sec/step' % np.mean(epoch_step_time)
-    losses_info = ', '.join(['%.4e' % f for f in np.mean(epoch_loss, axis=0)])
-    loss_info = 'loss: %.4e  (%s)' % (np.mean(epoch_total_loss), losses_info)
+    losses_info = ', '.join(['%.4e' % f for f in epoch_loss])
+    loss_info = 'loss: %.4e  (%s)' % (epoch_total_loss, losses_info)
     print(' - '.join((epoch_info, time_info, loss_info)), flush=True)
 
+    # append epoch loss
+    all_loss.append(epoch_loss)
+    all_total_loss.append(epoch_total_loss)
+
+    # 保存最优模型
+    if all_total_loss < best_loss:
+        best_loss = all_total_loss
+        best_epoch = epoch
+        model.save(os.path.join(model_dir, 'model_best.pt'))
+        print(f'Save best model >>> : {os.path.join(model_dir, "model_best.pt")}')
+
 # final model save
-model.save(os.path.join(model_dir, '%04d.pt' % args.epochs))
+model.save(os.path.join(model_dir, 'model_final.pt' % args.epochs))
+print(f'Best epoch : {best_epoch}')
+print(f'Best loss : {best_loss}')
+print(f'Save best model >>> : {os.path.join(model_dir, "model_final.pt")}')
+
+# save final loss image
+plot_loss_img(all_total_loss, 'image_loss.png')
