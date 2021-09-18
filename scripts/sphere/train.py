@@ -193,7 +193,7 @@ for epoch in range(args.initial_epoch, args.epochs):
         model.save(os.path.join(model_dir, '%04d.pt' % epoch))
     # save image loss
     if epoch % 10 == 0:
-        plot_loss_img(all_total_loss, 'image_loss.png')
+        plot_loss_img(all_total_loss, os.path.join(model_dir, 'image_loss.png'))
 
     epoch_loss = []
     epoch_total_loss = []
@@ -245,11 +245,12 @@ for epoch in range(args.initial_epoch, args.epochs):
     all_total_loss.append(epoch_total_loss)
 
     # 保存最优模型
-    if all_total_loss < best_loss:
-        best_loss = all_total_loss
-        best_epoch = epoch
-        model.save(os.path.join(model_dir, 'model_best.pt'))
-        print(f'Save best model >>> : {os.path.join(model_dir, "model_best.pt")}')
+    if epoch > 100:
+        if epoch_total_loss < best_loss:
+            best_loss = epoch_total_loss
+            best_epoch = epoch
+            model.save(os.path.join(model_dir, 'model_best.pt'))
+            print(f'Save best model >>> : {os.path.join(model_dir, "model_best.pt")}')
 
 # final model save
 model.save(os.path.join(model_dir, 'model_final.pt' % args.epochs))
@@ -258,4 +259,4 @@ print(f'Best loss : {best_loss}')
 print(f'Save best model >>> : {os.path.join(model_dir, "model_final.pt")}')
 
 # save final loss image
-plot_loss_img(all_total_loss, 'image_loss.png')
+plot_loss_img(all_total_loss, os.path.join(model_dir, 'image_loss.png'))
