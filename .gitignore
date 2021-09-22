@@ -3,3 +3,5 @@ scratch/*
 
 .idea/
 .vscode/
+
+voxelmorph.egg-info/
