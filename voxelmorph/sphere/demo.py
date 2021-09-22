@@ -6,11 +6,6 @@ from skimage import io
 from PIL import Image
 import imageio
 
-input = "/home/sunzhenyu/download/SurfReg/lh.average.curvature.filled.buckner40.tif"
-output = "/home/sunzhenyu/download/SurfReg/lh.atlas.npz"
-test_data = '/home/sunzhenyu/download/SurfReg/lh_sphere.npz'
-
-
 def tif2npz(tif, npz):
     data = np.zeros((512, 256), dtype=np.float)
 
@@ -57,11 +52,16 @@ def lookshape(filename):
     # print(img)
 
     file_data = np.array(img)
+    print(file_data)
     a = file_data.flatten()
     print(max(a), min(a))
 
 
 if __name__ == '__main__':
+    input = "/home/sunzhenyu/download/SurfReg/lh.average.curvature.filled.buckner40.tif"
+    output = "/home/sunzhenyu/download/SurfReg/lh.atlas.npz"
+    test_data = '/home/zhenyu/SurfReg/lh.reg.template.tif'
+
     lookshape(test_data)
-    median_normalization(input)
-    tif2npz(input, output)
+    # median_normalization(input)
+    # tif2npz(input, output)

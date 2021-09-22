@@ -59,6 +59,17 @@ parser.add_argument('--multichannel', action='store_true',
                     help='specify that data has multiple channels')
 args = parser.parse_args()
 
+def meannormalize(sub_data):
+
+    mean = np.mean(sub_data)
+    std = np.std(sub_data)
+    norm = (sub_data - mean) / std
+    return norm, mean, std
+
+def backmeannormalize(input, mean, std):
+    output = input * std + mean
+    return output
+
 # device handling
 if args.gpu and (args.gpu != '-1'):
     device = 'cuda'
@@ -79,12 +90,18 @@ model.to(device)
 model.eval()
 
 # set up tensors and permute
+moving, mean_moving, std_moving = meannormalize(moving)
+fixed, mean_fixed, std_fixed = meannormalize(fixed)
+print(mean_moving, std_moving)
+
+
 input_moving = torch.from_numpy(moving).to(device).float().permute(0, 3, 1, 2)
 input_fixed = torch.from_numpy(fixed).to(device).float().permute(0, 3, 1, 2)
 
 
 # predict
 moved, warp = model(input_moving, input_fixed, registration=True)
+moved = backmeannormalize(moved, mean_moving, std_moving)
 
 # save moved image
 if args.moved:
@@ -95,3 +112,5 @@ if args.moved:
 if args.warp:
     warp = warp.detach().cpu().numpy().squeeze()
     vxm.py.utils.save_volfile(warp, args.warp, fixed_affine)
+
+
