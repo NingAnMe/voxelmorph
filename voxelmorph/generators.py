@@ -12,6 +12,13 @@ def meannormalize(sub_data):
     norm = (sub_data - mean) / std
     return norm
 
+def minmaxnormalize(sub_data):
+    max = np.max(sub_data)
+    min = np.min(sub_data)
+    norm = (sub_data - min)/(max - sub_data)
+
+    return norm
+
 def volgen(
     vol_names,
     batch_size=1,
@@ -58,7 +65,9 @@ def volgen(
         load_params = dict(np_var=np_var, add_batch_axis=True, add_feat_axis=add_feat_axis,
                            pad_shape=pad_shape, resize_factor=resize_factor)
         imgs = [py.utils.load_volfile(vol_names[i], **load_params) for i in indices]
+
         imgs = [meannormalize(img) for img in imgs]  # 增加对单个样本的标准化
+
         vols = [np.concatenate(imgs, axis=0)]
 
         # optionally load segmentations and concatenate

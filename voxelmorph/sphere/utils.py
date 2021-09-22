@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 import torch
+=======
+>>>>>>> 01d6d2540feaccf9f1999d751f7235258189eca7
 from matplotlib import pyplot as plt
 
 
