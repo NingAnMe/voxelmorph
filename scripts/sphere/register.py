@@ -53,6 +53,7 @@ parser.add_argument('--moving', required=True, help='moving image (source) filen
 parser.add_argument('--fixed', required=True, help='fixed image (target) filename')
 parser.add_argument('--moved', required=True, help='warped image output filename')
 parser.add_argument('--model', required=True, help='pytorch model for nonlinear registration')
+# parser.add_argument('--normalize_type', default='std',  help='select the data normalization processing type')
 parser.add_argument('--warp', help='output warp deformation filename')
 parser.add_argument('-g', '--gpu', help='GPU number(s) - if not supplied, CPU is used')
 parser.add_argument('--multichannel', action='store_true',
@@ -60,7 +61,6 @@ parser.add_argument('--multichannel', action='store_true',
 args = parser.parse_args()
 
 def meannormalize(sub_data):
-
     mean = np.mean(sub_data)
     std = np.std(sub_data)
     norm = (sub_data - mean) / std
@@ -69,6 +69,32 @@ def meannormalize(sub_data):
 def backmeannormalize(input, mean, std):
     output = input * std + mean
     return output
+
+def minmaxnormalize(sub_data):
+    max = np.max(sub_data)
+    min = np.min(sub_data)
+    norm = (sub_data - min) / (max - min)
+    return norm, max, min
+
+def backminmaxnormalize(input, max, min):
+    output = input * (max - min) + min
+    return output
+
+# def normalize_forword(data, type="std"):
+#     if type == "std":
+#         return meannormalize(data)
+#     elif type == "min_max":
+#         return minmaxnormalize(data)
+#     else:
+#         raise KeyError("type is error")
+#
+# def normalize_backword(data, a, b, type="std"):
+#     if type == "std":
+#         return backmeannormalize(data, a, b)
+#     elif type == "min_max":
+#         return backminmaxnormalize(data, a, b)
+#     else:
+#         raise KeyError("type is error")
 
 # device handling
 if args.gpu and (args.gpu != '-1'):
@@ -89,19 +115,24 @@ model = vxm.networks.VxmDense.load(args.model, device)
 model.to(device)
 model.eval()
 
-# set up tensors and permute
-moving, mean_moving, std_moving = meannormalize(moving)
-fixed, mean_fixed, std_fixed = meannormalize(fixed)
-print(mean_moving, std_moving)
+# set up normalize type
+# normalize_type = args.normalize_type
+# normalize_type = "min_max"
 
+# set up tensors and permute
+# moving, a_moving, b_moving = normalize_forword(moving, type=normalize_type)
+# fixed, a_fixed, b_fixed = normalize_forword(fixed, type=normalize_type)
+
+moving, a_moving, b_moving = meannormalize(moving)
+fixed, a_fixed, b_fixed = meannormalize(fixed)
 
 input_moving = torch.from_numpy(moving).to(device).float().permute(0, 3, 1, 2)
 input_fixed = torch.from_numpy(fixed).to(device).float().permute(0, 3, 1, 2)
 
-
 # predict
 moved, warp = model(input_moving, input_fixed, registration=True)
-moved = backmeannormalize(moved, mean_moving, std_moving)
+# moved = normalize_backword(moved, a_moving, b_moving, type=normalize_type)
+moved = backmeannormalize(moved, a_moving, b_moving)
 
 # save moved image
 if args.moved:

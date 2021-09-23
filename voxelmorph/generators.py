@@ -67,7 +67,7 @@ def volgen(
                            pad_shape=pad_shape, resize_factor=resize_factor)
         imgs = [py.utils.load_volfile(vol_names[i], **load_params) for i in indices]
 
-        imgs = [meannormalize(img) for img in imgs]  # 增加对单个样本的标准化（均值归一化）
+        # imgs = [meannormalize(img) for img in imgs]  # 增加对单个样本的标准化（均值归一化）
         imgs = [minmaxnormalize(img) for img in imgs]  # 增加对单个样本的标准化（极大极小值归一化）
 
         vols = [np.concatenate(imgs, axis=0)]
