@@ -43,7 +43,9 @@ import torch
 # import voxelmorph with sphere backend
 os.environ['VXM_BACKEND'] = 'sphere'
 import voxelmorph as vxm  # nopep8
+from voxelmorph.sphere.utils import minmaxnormalize
 from voxelmorph.sphere.utils import plot_loss_img
+from voxelmorph.sphere.utils import domainnorm
 
 # parse the commandline
 parser = argparse.ArgumentParser()
@@ -164,6 +166,8 @@ if args.image_loss == 'ncc':
     image_loss_func = vxm.losses.NCC().loss
 elif args.image_loss == 'mse':
     image_loss_func = vxm.losses.MSE().loss
+elif args.image_loss == 'mi':
+    image_loss_func = vxm.losses.MutualInformation().loss
 else:
     raise ValueError('Image loss should be "mse" or "ncc", but found "%s"' % args.image_loss)
 
@@ -205,6 +209,7 @@ for epoch in range(args.initial_epoch, args.epochs):
 
         # generate inputs (and true outputs) and convert them to tensors
         inputs, y_true = next(generator)
+        inputs = [domainnorm(i) for i in inputs]
         inputs = [torch.from_numpy(d).to(device).float().permute(0, 3, 1, 2) for d in inputs]
         y_true = [torch.from_numpy(d).to(device).float().permute(0, 3, 1, 2) for d in y_true]
 
@@ -253,7 +258,7 @@ for epoch in range(args.initial_epoch, args.epochs):
             print(f'Save best model >>> : {os.path.join(model_dir, "model_best.pt")}')
 
 # final model save
-model.save(os.path.join(model_dir, 'model_final.pt' % args.epochs))
+model.save(os.path.join(model_dir, 'model_final.pt'))
 print(f'Best epoch : {best_epoch}')
 print(f'Best loss : {best_loss}')
 print(f'Save best model >>> : {os.path.join(model_dir, "model_final.pt")}')
