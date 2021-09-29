@@ -99,7 +99,30 @@ def get_rot_mat_zyx(z1, y2, x3):
                      [-np.sin(y2), np.cos(y2) * np.sin(x3), np.cos(y2) * np.cos(x3)]])
 
 
-def rigid_sphere(moving_sphere, moving_data, fix_sphere, fix_data):
+if __name__ == '__main__':
+    # parse commandline args
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--sphere-moving', required=True, help='moving image (source) filename')
+    parser.add_argument('--sulc-moving', required=True, help='fixed image (target) filename')
+    parser.add_argument('--sphere-fixed', required=True, help='warped image output filename')
+    parser.add_argument('--sulc-fixed', required=True, help='pytorch model for nonlinear registration')
+    parser.add_argument('--sphere-moved', required=True, help='output warp deformation filename')
+    args = parser.parse_args()
+
+    # 数据准备
+    sphere_moving = args.sphere_moving
+    sulc_moving = args.sulc_moving
+    sphere_fixed = args.sphere_fixed
+    sulc_fixed = args.sulc_fixed
+    sphere_moved = args.sphere_moved
+
+    # # 数据准备
+    # sphere_moving = "Irene_test/lh.sphere"
+    # sulc_moving = "Irene_test/lh.sulc"
+    # sphere_fixed = "fsaverage/lh.sphere"
+    # sulc_fixed = "fsaverage/lh.sulc"
+    # sphere_moved = "Irene_test/lh.rigid.sphere"
+
     # 加载数据
     vertices_moving, faces_moving = nib.freesurfer.read_geometry(sphere_moving)
     data_moving = nib.freesurfer.read_morph_data(sulc_moving)
@@ -187,34 +210,6 @@ def rigid_sphere(moving_sphere, moving_data, fix_sphere, fix_data):
         center_beta = best_beta
         center_gamma = best_gamma
         print(time.time() - time_start)
-    return sphere_moved, sphere_moving, faces_moving
-
-
-if __name__ == '__main__':
-    # parse commandline args
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--sphere-moving', required=True, help='moving image (source) filename')
-    parser.add_argument('--sulc-moving', required=True, help='fixed image (target) filename')
-    parser.add_argument('--sphere-fixed', required=True, help='warped image output filename')
-    parser.add_argument('--sulc-fixed', required=True, help='pytorch model for nonlinear registration')
-    parser.add_argument('--sphere-moved', required=True, help='output warp deformation filename')
-    args = parser.parse_args()
-
-    # 数据准备
-    sphere_moving = args.sphere_moving
-    sulc_moving = args.sulc_moving
-    sphere_fixed = args.sphere_fixed
-    sulc_fixed = args.sulc_fixed
-    sphere_moved = args.sphere_moved
-
-    # # 数据准备
-    # sphere_moving = "Irene_test/lh.sphere"
-    # sulc_moving = "Irene_test/lh.sulc"
-    # sphere_fixed = "fsaverage/lh.sphere"
-    # sulc_fixed = "fsaverage/lh.sulc"
-    # sphere_moved = "Irene_test/lh.rigid.sphere"
-
-    best_vertices_moving_rigid =
     # 保存结果
     nib.freesurfer.write_geometry(sphere_moved, best_vertices_moving_rigid, faces_moving)
     print(time.time() - time_start, best_alpha, best_beta, best_gamma, best_energy)
