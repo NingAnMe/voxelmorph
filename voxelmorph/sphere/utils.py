@@ -71,3 +71,19 @@ def xyz2lonlat(vertices, data):
     values[ys, xs] = data
 
     return values, xs, ys, r
+
+
+def minmaxnormalize(sub_data):
+    zeros = sub_data == 0
+    ma = np.max(sub_data)
+    mi = np.min(sub_data)
+    norm = (sub_data - mi) / (ma - mi)
+    norm[zeros] = 0
+    return norm
+
+
+def domainnorm(sub_data):
+    domain = 33
+    norm = sub_data / domain
+
+    return norm

@@ -20,6 +20,13 @@ def minmaxnormalize(sub_data):
 
     return norm
 
+def domainnorm(sub_data):
+    domain = 33
+    norm = sub_data/domain
+
+    return norm
+
+
 def volgen(
     vol_names,
     batch_size=1,
@@ -68,7 +75,8 @@ def volgen(
         imgs = [py.utils.load_volfile(vol_names[i], **load_params) for i in indices]
 
         # imgs = [meannormalize(img) for img in imgs]  # 增加对单个样本的标准化（均值归一化）
-        imgs = [minmaxnormalize(img) for img in imgs]  # 增加对单个样本的标准化（极大极小值归一化）
+        # imgs = [minmaxnormalize(img) for img in imgs]  # 增加对单个样本的标准化（极大极小值归一化）
+        # imgs = [domainnorm(img) for img in imgs]
 
         vols = [np.concatenate(imgs, axis=0)]
 

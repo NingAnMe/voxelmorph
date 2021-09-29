@@ -37,28 +37,40 @@ the License.
 
 import os
 import argparse
-
+import matplotlib.pyplot as plt
 # third party
 import numpy as np
 import nibabel as nib
 import torch
+from scipy.interpolate import RegularGridInterpolator
+from astropy.coordinates import cartesian_to_spherical, spherical_to_cartesian
 
 # import voxelmorph with sphere backend
 os.environ['VXM_BACKEND'] = 'sphere'
-import voxelmorph as vxm   # nopep8
+import voxelmorph as vxm  # nopep8
+import math
 
 # parse commandline args
 parser = argparse.ArgumentParser()
 parser.add_argument('--moving', required=True, help='moving image (source) filename')
 parser.add_argument('--fixed', required=True, help='fixed image (target) filename')
-parser.add_argument('--moved', required=True, help='warped image output filename')
+parser.add_argument('--moved', help='warped image output filename')
 parser.add_argument('--model', required=True, help='pytorch model for nonlinear registration')
 # parser.add_argument('--normalize_type', default='std',  help='select the data normalization processing type')
 parser.add_argument('--warp', help='output warp deformation filename')
+parser.add_argument('--sphere_sub', help='sphere_sub image filename')
+parser.add_argument('--sphere_atlas', help='sphere_atlas image filename')
+# parser.add_argument('--sphere_reg', help='sphere.reg image output filename')
+parser.add_argument('--sulc_sub', help='silc_sub image filename')
+parser.add_argument('--sulc_atlas', help='silc_atlas image filename')
+parser.add_argument('--sphere_freesurfer', help='sphere_freesurfer image filename')
+parser.add_argument('--plot_image', help='show time image output filename')
 parser.add_argument('-g', '--gpu', help='GPU number(s) - if not supplied, CPU is used')
 parser.add_argument('--multichannel', action='store_true',
                     help='specify that data has multiple channels')
+
 args = parser.parse_args()
+
 
 def meannormalize(sub_data):
     mean = np.mean(sub_data)
@@ -66,19 +78,37 @@ def meannormalize(sub_data):
     norm = (sub_data - mean) / std
     return norm, mean, std
 
+
 def backmeannormalize(input, mean, std):
     output = input * std + mean
     return output
 
+
 def minmaxnormalize(sub_data):
+    zeros = sub_data == 0
     max = np.max(sub_data)
     min = np.min(sub_data)
     norm = (sub_data - min) / (max - min)
-    return norm, max, min
+    norm[zeros] = 0
+    return norm
+
 
 def backminmaxnormalize(input, max, min):
     output = input * (max - min) + min
     return output
+
+
+def domainnorm(sub_data):
+    domain = 33
+    norm = sub_data / domain
+    return norm
+
+
+def backdomainnorm(sub_data):
+    domain = 33
+    output = sub_data * domain
+    return output
+
 
 # def normalize_forword(data, type="std"):
 #     if type == "std":
@@ -95,6 +125,89 @@ def backminmaxnormalize(input, max, min):
 #         return backminmaxnormalize(data, a, b)
 #     else:
 #         raise KeyError("type is error")
+
+def interpolate(warp_file, lh_sphere):
+    x = np.linspace(-128, 128, 256)  # phi ###
+    y = np.linspace(0, 512, 512)  # theta ###
+
+    # print(warp_file.files)
+    warp = warp_file.squeeze()
+    warp = warp.permute(0, 2, 1)
+    warp = warp.detach().numpy()
+    # warp = warp_file['vol']
+    # warp = np.moveaxis(warp, 1, -1)
+
+    interpolate_function_x = RegularGridInterpolator((x, y), -warp[0])  # x-axis
+    interpolate_function_y = RegularGridInterpolator((x, y), -warp[1])  # y-axis
+
+    coords, faces = nib.freesurfer.read_geometry(lh_sphere)
+    r, phi, theta = cartesian_to_spherical(coords[:, 0], coords[:, 1], coords[:, 2])
+    p = phi.degree
+    t = theta.degree
+
+    theta_bins = 512
+    phi_bins = 256
+    theta_width = math.degrees(2 * np.pi) / theta_bins
+    t /= theta_width
+    phi_width = math.degrees(np.pi) / phi_bins
+    p /= phi_width
+    t = t.reshape(-1, 1)
+    p = p.reshape(-1, 1)
+    pts = np.concatenate((p, t), axis=1)
+
+    new_pts_x = interpolate_function_x(pts)
+    new_pts_y = interpolate_function_y(pts)
+    x_prime = pts.T[0] + new_pts_x
+    y_prime = pts.T[1] + new_pts_y
+
+    x_prime *= phi_width
+    y_prime *= theta_width
+    y_prime = np.clip(y_prime, 0, 360)
+    x_prime = np.clip(x_prime, -90, 90)
+
+    t_prime = [math.radians(i) for i in y_prime]
+    p_prime = [math.radians(i) for i in x_prime]
+    t_prime = np.array(t_prime)
+    p_prime = np.array(p_prime)
+
+    return r, p_prime, t_prime
+
+
+def save4image(lh_sphere_sub, lh_sphere_atlas, lh_sulc_sub, lh_sulc_atlas, lh_sphere_freesurfer, phi_prime, theta_prime,
+               imagesavefilename):
+    lh_morph_sulc_sub = nib.freesurfer.read_morph_data(lh_sulc_sub)
+    lh_morph_sulc_atlas = nib.freesurfer.read_morph_data(lh_sulc_atlas)
+
+    coords_sub, faces_sub = nib.freesurfer.read_geometry(lh_sphere_sub)
+    r_sub, phi_sub, theta_sub = cartesian_to_spherical(coords_sub[:, 0], coords_sub[:, 1], coords_sub[:, 2])
+    coords_atlas, faces_atlas = nib.freesurfer.read_geometry(lh_sphere_atlas)
+    r_atlas, phi_atlas, theta_atlas = cartesian_to_spherical(coords_atlas[:, 0], coords_atlas[:, 1], coords_atlas[:, 2])
+    coords_freesurfer, faces_freesurfer = nib.freesurfer.read_geometry(lh_sphere_freesurfer)
+    r_reg, phi_reg, theta_reg = cartesian_to_spherical(coords_freesurfer[:, 0], coords_freesurfer[:, 1],
+                                                       coords_freesurfer[:, 2])
+
+    fig = plt.figure(figsize=(14, 7))
+    ax = fig.add_subplot(141)
+    ax.scatter(phi_sub.degree, theta_sub.degree, s=0.1,
+               c=lh_morph_sulc_sub)  # phi.degree: [-90, 90], theta.degree: [0, 360]
+    plt.title('Moving')
+
+    ax = fig.add_subplot(142)
+    ax.scatter(phi_atlas.degree, theta_atlas.degree, s=0.1, c=lh_morph_sulc_atlas)
+    plt.title('Fixed')
+
+    ax = fig.add_subplot(143)
+    phi_prime = [math.degrees(p) for p in phi_prime]
+    thtea_prime = [math.degrees(t) for t in theta_prime]
+    ax.scatter(phi_prime, thtea_prime, s=0.1, c=lh_morph_sulc_sub)  # (256, 512)
+    plt.title('Moved')
+
+    ax = fig.add_subplot(144)
+    ax.scatter(phi_reg.degree, theta_reg.degree, s=0.1, c=lh_morph_sulc_sub)  # (256, 512)
+    plt.title('Moved FreeSurfer')
+
+    plt.savefig(imagesavefilename)
+
 
 # device handling
 if args.gpu and (args.gpu != '-1'):
@@ -123,8 +236,9 @@ model.eval()
 # moving, a_moving, b_moving = normalize_forword(moving, type=normalize_type)
 # fixed, a_fixed, b_fixed = normalize_forword(fixed, type=normalize_type)
 
-moving, a_moving, b_moving = meannormalize(moving)
-fixed, a_fixed, b_fixed = meannormalize(fixed)
+# moving = domainnorm(moving)
+moving = minmaxnormalize(moving)
+fixed = minmaxnormalize(fixed)
 
 input_moving = torch.from_numpy(moving).to(device).float().permute(0, 3, 1, 2)
 input_fixed = torch.from_numpy(fixed).to(device).float().permute(0, 3, 1, 2)
@@ -132,7 +246,26 @@ input_fixed = torch.from_numpy(fixed).to(device).float().permute(0, 3, 1, 2)
 # predict
 moved, warp = model(input_moving, input_fixed, registration=True)
 # moved = normalize_backword(moved, a_moving, b_moving, type=normalize_type)
-moved = backmeannormalize(moved, a_moving, b_moving)
+# moved = backdomainnorm(moved)
+
+
+if args.sphere_sub:
+    c, faces = nib.freesurfer.read_geometry(args.sphere_sub)
+    coords = np.empty(shape=c.shape)
+    r, phi_prime, theta_prime = interpolate(warp, args.sphere_sub)
+    # coords[:, 0], coords[:, 1], coords[:, 2] = spherical_to_cartesian(r, phi_prime, theta_prime)
+    # nib.freesurfer.io.write_geometry(args.sphere_reg, coords, faces)
+
+# save 4 image
+if args.plot_image:
+    lh_sphere_sub = args.sphere_sub
+    lh_sphere_atlas = args.sphere_atlas
+    lh_sulc_sub = args.sulc_sub
+    lh_sulc_atlas = args.sulc_atlas
+    lh_sphere_freesurfer = args.sphere_freesurfer
+    imagesavefilename = args.plot_image
+    save4image(lh_sphere_sub, lh_sphere_atlas, lh_sulc_sub, lh_sulc_atlas, lh_sphere_freesurfer, phi_prime, theta_prime,
+               imagesavefilename)
 
 # save moved image
 if args.moved:
@@ -143,5 +276,3 @@ if args.moved:
 if args.warp:
     warp = warp.detach().cpu().numpy().squeeze()
     vxm.py.utils.save_volfile(warp, args.warp, fixed_affine)
-
-
