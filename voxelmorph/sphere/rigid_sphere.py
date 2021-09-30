@@ -157,8 +157,10 @@ if __name__ == '__main__':
     # num_intervals = [9, 4, 4, 4, 5, 4, 4, 5, 4, 4, 5, 4, 4, 5]  # 每个范围遍历的步数
     # search_widths = [180, 40, 40, 20, 20, 10, 10, 5, 2, 1, 0.5, 0.02, 0.01, 0.005, 0.002, 0.001, 0.0005]  # 最大遍历范围
     # num_intervals = [9, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6]  # 每个范围遍历的步数
-    search_widths = [180, 40, 40, 20, 20, 10, 10, 5, 2, 1, 0.5, 0.02, 0.01, 0.005, 0.002, 0.001]  # 最大遍历范围
-    num_intervals = [  9,  5,  4,  5,  4,  5,  4, 5, 5, 5,   5,    5,    5,     5,     5,     5]  # 每个范围遍历的步数
+    # search_widths = [180, 40, 40, 20, 20, 10, 10, 5, 2, 1, 0.5, 0.02, 0.01, 0.005, 0.002, 0.001]  # 最大遍历范围
+    # num_intervals = [  9,  5,  4,  5,  4,  5,  4, 5, 5, 5,   5,    5,    5,     5,     5,     5]  # 每个范围遍历的步数
+    search_widths = [9, 1]  # 最大遍历范围
+    num_intervals = [1, 9]  # 每个范围遍历的步数
 
     # 遍历角度
     center_alpha = 0.
@@ -173,8 +175,10 @@ if __name__ == '__main__':
     count = 0
     for search_width, num_interval in zip(search_widths, num_intervals):
         # search_width = search_width / 2
+        search_width = search_width / 180 * np.pi
         num_interval = num_interval + 1
         print(center_alpha, center_beta, center_gamma)
+        print(np.linspace(center_alpha - search_width, center_alpha + search_width, num=num_interval))
         for alpha in np.linspace(center_alpha - search_width, center_alpha + search_width, num=num_interval):
             for beta in np.linspace(center_beta - search_width, center_beta + search_width, num=num_interval):
                 for gamma in np.linspace(center_gamma - search_width, center_gamma + search_width, num=num_interval):
