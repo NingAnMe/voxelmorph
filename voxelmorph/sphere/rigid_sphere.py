@@ -160,7 +160,7 @@ if __name__ == '__main__':
     # search_widths = [180, 40, 40, 20, 20, 10, 10, 5, 2, 1, 0.5, 0.02, 0.01, 0.005, 0.002, 0.001]  # 最大遍历范围
     # num_intervals = [  9,  5,  4,  5,  4,  5,  4, 5, 5, 5,   5,    5,    5,     5,     5,     5]  # 每个范围遍历的步数
     search_widths = [9, 1]  # 最大遍历范围
-    num_intervals = [1, 9]  # 每个范围遍历的步数
+    num_intervals = [9, 9]  # 每个范围遍历的步数
 
     # 遍历角度
     center_alpha = 0.
@@ -188,7 +188,9 @@ if __name__ == '__main__':
                     curr_vertices_moving = curr_rot.dot(np.transpose(vertices_moving))
                     curr_vertices_moving = np.transpose(curr_vertices_moving)  # 新的顶点坐标_3D
 
-                    lat_moving, lon_moving = xyz2lonlat(curr_vertices_moving)  # 新的顶点坐标_经纬度
+                    # #########  start 计算旋转以后的相似度  ###########  >>>>>>>>>>>>>>>>>>>>
+                    # 新的顶点坐标_经纬度
+                    lat_moving, lon_moving = xyz2lonlat(curr_vertices_moving)
 
                     # 在fixed图像，采样新坐标位置的值
                     lon_moving = lon_moving / 2
@@ -198,6 +200,7 @@ if __name__ == '__main__':
 
                     # 计算energy
                     energy = mean_squared_error(data_moving, data_fixed_resample_moving)
+                    # #########  end 计算旋转以后的相似度  ###########  <<<<<<<<<<<<<<<<<<<<<<
 
                     # print(count, time.time() - time_tmp)  # 每次刚性配准需要0.05秒
                     # 保存最优的变换参数
