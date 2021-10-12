@@ -5,3 +5,6 @@ scratch/*
 .vscode/
 
 voxelmorph.egg-info/
+
+*.log
+nohup.out
