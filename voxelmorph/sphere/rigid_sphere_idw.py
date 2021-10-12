@@ -5,6 +5,8 @@ import math
 import numpy as np
 from sklearn.metrics import mean_squared_error
 from astropy.coordinates import cartesian_to_spherical
+from scipy.interpolate import griddata
+from voxelmorph.sphere import idw
 
 
 def normalize(data, norm_method='SD', mean=None, std=None, mi=None, ma=None):
@@ -100,29 +102,28 @@ def get_rot_mat_zyx(z1, y2, x3):
 
 
 if __name__ == '__main__':
-    count = 0
-    # parse commandline args
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--sphere-moving', required=True, help='moving image (source) filename')
-    parser.add_argument('--sulc-moving', required=True, help='fixed image (target) filename')
-    parser.add_argument('--sphere-fixed', required=True, help='warped image output filename')
-    parser.add_argument('--sulc-fixed', required=True, help='pytorch model for nonlinear registration')
-    parser.add_argument('--sphere-moved', required=True, help='output warp deformation filename')
-    args = parser.parse_args()
+    # # parse commandline args
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument('--sphere-moving', required=True, help='moving image (source) filename')
+    # parser.add_argument('--sulc-moving', required=True, help='fixed image (target) filename')
+    # parser.add_argument('--sphere-fixed', required=True, help='warped image output filename')
+    # parser.add_argument('--sulc-fixed', required=True, help='pytorch model for nonlinear registration')
+    # parser.add_argument('--sphere-moved', required=True, help='output warp deformation filename')
+    # args = parser.parse_args()
+    #
+    # # 数据准备
+    # sphere_moving = args.sphere_moving
+    # sulc_moving = args.sulc_moving
+    # sphere_fixed = args.sphere_fixed
+    # sulc_fixed = args.sulc_fixed
+    # sphere_moved = args.sphere_moved
 
     # 数据准备
-    sphere_moving = args.sphere_moving
-    sulc_moving = args.sulc_moving
-    sphere_fixed = args.sphere_fixed
-    sulc_fixed = args.sulc_fixed
-    sphere_moved = args.sphere_moved
-
-    # # 数据准备
-    # sphere_moving = "Irene_test/lh.sphere"
-    # sulc_moving = "Irene_test/lh.sulc"
-    # sphere_fixed = "fsaverage/lh.sphere"
-    # sulc_fixed = "fsaverage/lh.sulc"
-    # sphere_moved = "Irene_test/lh.rigid.sphere"
+    sphere_moving = "lh.sphere"
+    sulc_moving = "lh.sulc"
+    sphere_fixed = "/home/anning/project/surfreg/fsaverage/lh.sphere"
+    sulc_fixed = "/home/anning/project/surfreg/fsaverage/lh.sulc"
+    sphere_moved = "lh.rigid.sphere"
 
     # 加载数据
     vertices_moving, faces_moving = nib.freesurfer.read_geometry(sphere_moving)
@@ -134,14 +135,13 @@ if __name__ == '__main__':
     data_moving = normalize(data_moving)  # [3, n]
     data_fixed = normalize(data_fixed)  # [3, n]
 
-    # fixed坐标转2D_lonlat.计算energy时，moving和fixed都转到lonlat平面
-    shape_img2d = (720, 360)
-    img2d_fixed, _, _, _, phi, theta = xyz2lonlat_img(vertices_fixed, data_fixed, shape=shape_img2d)
+    # 根据fixed创建idw插值网格
+    idw_tree = idw.tree(vertices_fixed, data_fixed)
 
-    # 建立fixed的插值网格
-    y = np.arange(0, shape_img2d[0])
-    x = np.arange(0, shape_img2d[1])
-    rgi = RegularGridInterpolator((y, x), img2d_fixed)
+    # # 建立fixed的插值网格
+    # y = np.arange(0, shape_img2d[0])
+    # x = np.arange(0, shape_img2d[1])
+    # rgi = RegularGridInterpolator((y, x), img2d_fixed)
 
     energies = []  # 记录loss的变化，最优的rot值
     import time
@@ -173,6 +173,7 @@ if __name__ == '__main__':
     best_vertices_moving_rigid = vertices_moving
 
     best_energy = float('inf')
+    count = 0
     for search_width, num_interval in zip(search_widths, num_intervals):
         # search_width = search_width / 2
         search_width = search_width / 180 * np.pi
@@ -182,6 +183,7 @@ if __name__ == '__main__':
         for alpha in np.linspace(center_alpha - search_width, center_alpha + search_width, num=num_interval):
             for beta in np.linspace(center_beta - search_width, center_beta + search_width, num=num_interval):
                 for gamma in np.linspace(center_gamma - search_width, center_gamma + search_width, num=num_interval):
+                    time_tmp = time.time()
                     count += 1
                     # 旋转
                     curr_rot = get_rot_mat_zyx(alpha, beta, gamma)
@@ -189,20 +191,14 @@ if __name__ == '__main__':
                     curr_vertices_moving = np.transpose(curr_vertices_moving)  # 新的顶点坐标_3D
 
                     # #########  start 计算旋转以后的相似度  ###########  >>>>>>>>>>>>>>>>>>>>
-                    # 新的顶点坐标_经纬度
-                    lat_moving, lon_moving = xyz2lonlat(curr_vertices_moving)
-
-                    # 在fixed图像，采样新坐标位置的值
-                    lon_moving = lon_moving / 2
-                    lat_moving = lat_moving / 2
-                    lonlat = np.stack((lon_moving, lat_moving), axis=1)
-                    data_fixed_resample_moving = rgi(lonlat)
+                    # 在fixed上根据moving插值
+                    data_fixed_resample_moving = idw_tree(curr_vertices_moving)
 
                     # 计算energy
                     energy = mean_squared_error(data_moving, data_fixed_resample_moving)
                     # #########  end 计算旋转以后的相似度  ###########  <<<<<<<<<<<<<<<<<<<<<<
 
-                    # print(count, time.time() - time_tmp)  # 每次刚性配准需要0.05秒
+                    print(count, time.time() - time_tmp)  # 每次刚性配准需要0.2秒
                     # 保存最优的变换参数
                     if energy < best_energy:
                         print(count, energy, alpha, beta, gamma)
