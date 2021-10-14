@@ -143,6 +143,32 @@ class Unet(nn.Module):
 
         return x
 
+class SampleNormalLogVar(nn.Module):
+    """
+    Gaussian sample given mean and log_variance
+
+    inputs: list of Tensors [mu, log_var]
+    outputs: Tensor sample from N(mu, sigma^2)
+    """
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        """
+        sample from a normal distribution
+
+        args should be [mu, log_var], where log_var is the log of the squared sigma
+
+        """
+        mu, log_var = x
+
+        # sample from N(0, 1)
+        noise = torch.randn(x.shape)
+
+        # make it a sample from N(mu, sigma^2)
+        z = mu + torch.exp(log_var / 2.0) * noise
+        return z
+
 
 class VxmDense(LoadableModel):
     """
@@ -216,8 +242,13 @@ class VxmDense(LoadableModel):
 
         # probabilities are not supported in pytorch
         if use_probs:
-            raise NotImplementedError(
-                'Flow variance has not been implemented in pytorch - set use_probs to False')
+            self.use_probs = True
+            self.flow_logsigma = Conv(self.unet_model.final_nf, ndims, kernel_size=3, padding=1, bias=True)
+            self.flow_logsigma.weight = nn.Parameter(Normal(0, 1e-10).sample(self.flow_logsigma.weight.shape))
+            self.flow_logsigma.bias = nn.Parameter(torch.ones(self.flow.bias.shape) * -10)
+            self.sample_normal_log_val = SampleNormalLogVar()
+        else:
+            self.use_probs = False
 
         # configure optional resize layers (downsize)
         if not unet_half_res and int_steps > 0 and int_downsize > 1:
@@ -253,13 +284,19 @@ class VxmDense(LoadableModel):
         x = torch.cat([source, target], dim=1)
         x = self.unet_model(x)
         # transform into flow field
-        flow_field = self.flow(x)
+        flow_mean = self.flow(x)
         # resize flow for integration
-        pos_flow = flow_field
+        if self.use_probs:
+            flow_logsigma = self.flow_logsigma(x)
+            flow_params = torch.cat((flow_mean, flow_logsigma))
+            flow_input = [flow_mean, flow_logsigma]
+            flow = self.sample_normal_log_val(flow_input)
+        else:
+            flow = flow_mean
+
+        pos_flow = flow
         if self.resize:
             pos_flow = self.resize(pos_flow)
-
-        preint_flow = pos_flow
 
         # negate flow for bidirectional model
         neg_flow = -pos_flow if self.bidir else None
@@ -277,11 +314,20 @@ class VxmDense(LoadableModel):
         # warp image with flow field
         y_source = self.transformer(source, pos_flow)
         y_target = self.transformer(target, neg_flow) if self.bidir else None
-        # return non-integrated flow field if training
-        if not registration:
-            return (y_source, y_target, preint_flow) if self.bidir else (y_source, preint_flow)
+
+        if self.bidir:
+            outputs = [y_source, y_target]
         else:
-            return y_source, pos_flow
+            outputs = [y_source]
+
+        if self.use_probs:
+            # compute loss on flow probabilities
+            outputs += [flow_params]
+        else:
+            # compute smoothness loss on pre-integrated warp
+            outputs += [pos_flow]
+
+        return outputs
 
 
 class ConvBlock(nn.Module):

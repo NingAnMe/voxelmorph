@@ -103,45 +103,6 @@ class Dice:
         return -dice
 
 
-class Grad:
-    """
-    N-D gradient loss.
-    """
-
-    def __init__(self, penalty='l1', loss_mult=None):
-        self.penalty = penalty
-        self.loss_mult = loss_mult
-
-    def loss(self, _, y_pred, weights=True):
-        # dy = torch.abs(y_pred[:, :, 1:, :, :] - y_pred[:, :, :-1, :, :])
-        # dx = torch.abs(y_pred[:, :, :, 1:, :] - y_pred[:, :, :, :-1, :])
-        # dz = torch.abs(y_pred[:, :, :, :, 1:] - y_pred[:, :, :, :, :-1])
-        dy = torch.abs(y_pred[:, :, 1:, :] - y_pred[:, :, :-1, :])
-        dx = torch.abs(y_pred[:, :, :, 1:] - y_pred[:, :, :, :-1])
-
-
-        if self.penalty == 'l2':
-            # dy[dy > 50] = 500
-            dy = dy * dy
-            dx = dx * dx
-            # dz = dz * dz
-
-        # d = torch.mean(dx) + torch.mean(dy) + torch.mean(dz)
-        if weights:
-            weight = np.abs(1 / np.sin(np.linspace(0 + 0.006, np.pi - 0.006, 256)))
-            weight = torch.from_numpy(weight).float().to("cuda")
-            dy = weight * dy
-
-            dx = weight[:-1] * dx
-
-        d = torch.mean(dx) + torch.mean(dy)
-        grad = d / 2.0
-
-        if self.loss_mult is not None:
-            grad *= self.loss_mult
-        return grad
-
-
 class MutualInformation:
     """
     Mutual Information
@@ -198,3 +159,149 @@ class MutualInformation:
 
     def forward(self, y_true, y_pred):
         return -self.loss(y_true, y_pred)
+
+
+class Grad:
+    """
+    N-D gradient loss.
+    """
+
+    def __init__(self, penalty='l1', loss_mult=None):
+        self.penalty = penalty
+        self.loss_mult = loss_mult
+
+    def loss(self, _, y_pred, weights=True):
+        # dy = torch.abs(y_pred[:, :, 1:, :, :] - y_pred[:, :, :-1, :, :])
+        # dx = torch.abs(y_pred[:, :, :, 1:, :] - y_pred[:, :, :, :-1, :])
+        # dz = torch.abs(y_pred[:, :, :, :, 1:] - y_pred[:, :, :, :, :-1])
+        dy = torch.abs(y_pred[:, :, 1:, :] - y_pred[:, :, :-1, :])
+        dx = torch.abs(y_pred[:, :, :, 1:] - y_pred[:, :, :, :-1])
+
+
+        if self.penalty == 'l2':
+            # dy[dy > 50] = 500
+            dy = dy * dy
+            dx = dx * dx
+            # dz = dz * dz
+
+        # d = torch.mean(dx) + torch.mean(dy) + torch.mean(dz)
+        if weights:
+            weight = np.abs(1 / np.sin(np.linspace(0 + 0.006, np.pi - 0.006, 256)))
+            weight = torch.from_numpy(weight).float().to("cuda")
+            dy = weight * dy
+
+            dx = weight[:-1] * dx
+
+        d = torch.mean(dx) + torch.mean(dy)
+        grad = d / 2.0
+
+        if self.loss_mult is not None:
+            grad *= self.loss_mult
+        return grad
+
+
+class KL:
+    """
+    Kullback–Leibler divergence for probabilistic flows.
+    """
+
+    def __init__(self, prior_lambda, flow_vol_shape=None):
+        self.prior_lambda = prior_lambda
+        self.flow_vol_shape = flow_vol_shape
+        self.D = None
+
+    def _adj_filt(self, ndims):
+        """
+        compute an adjacency filter that, for each feature independently,
+        has a '1' in the immediate neighbor, and 0 elsewhere.
+        so for each filter, the filter has 2^ndims 1s.
+        the filter is then setup such that feature i outputs only to feature i
+        """
+
+        # inner filter, that is 3x3x...
+        filt_inner = np.zeros([3] * ndims)
+        for j in range(ndims):
+            o = [[1]] * ndims
+            o[j] = [0, 2]
+            filt_inner[np.ix_(*o)] = 1
+
+        # full filter, that makes sure the inner filter is applied
+        # ith feature to ith feature
+        filt = np.zeros([3] * ndims + [ndims, ndims])
+        for i in range(ndims):
+            filt[..., i, i] = filt_inner
+
+        return filt
+
+    def _degree_matrix(self, vol_shape):
+        # get shape stats
+        ndims = len(vol_shape)
+        sz = [*vol_shape, ndims]
+
+        # prepare conv kernel
+        conv_fn = getattr(torch.nn, 'Conv%dd' % ndims)
+
+        # prepare tf filter
+        z = torch.ones([1] + sz)
+        filt_tf = torch.from_numpy(self._adj_filt(ndims))
+        strides = [1] * (ndims + 2)
+        return conv_fn(z, filt_tf, strides, "SAME")
+
+    def prec_loss(self, y_pred):
+        """
+        a more manual implementation of the precision matrix term
+                mu * P * mu    where    P = D - A
+        where D is the degree matrix and A is the adjacency matrix
+                mu * P * mu = 0.5 * sum_i mu_i sum_j (mu_i - mu_j) = 0.5 * sum_i,j (mu_i - mu_j) ^ 2
+        where j are neighbors of i
+
+        Note: could probably do with a difference filter,
+        but the edges would be complicated unless tensorflow allowed for edge copying
+        """
+        vol_shape = y_pred.get_shape().as_list()[1:-1]
+        ndims = len(vol_shape)
+
+        sm = 0
+        for i in range(ndims):
+            d = i + 1
+            # permute dimensions to put the ith dimension first
+            r = [d, *range(d), *range(d + 1, ndims + 2)]
+            y = torch.permute(y_pred, r)
+            df = y[1:, ...] - y[:-1, ...]
+            sm += torch.mean(df * df)
+
+        return 0.5 * sm / ndims
+
+    def loss(self, y_true, y_pred):
+        """
+        KL loss
+        y_pred is assumed to be D*2 channels: first D for mean, next D for logsigma
+        D (number of dimensions) should be 1, 2 or 3
+
+        y_true is only used to get the shape
+        """
+
+        # prepare inputs
+        ndims = len(y_pred.shape) - 2
+        mean = y_pred[..., 0]
+        log_sigma = y_pred[..., 1]
+
+        # compute the degree matrix (only needs to be done once)
+        # we usually can't compute this until we know the ndims,
+        # which is a function of the data
+        if self.D is None:
+            if self.flow_vol_shape is None:
+                self.flow_vol_shape = y_pred.shape[1:-1]
+            self.D = self._degree_matrix(self.flow_vol_shape)
+
+        # sigma terms
+        sigma_term = self.prior_lambda * self.D * torch.exp(log_sigma) - log_sigma
+        sigma_term = torch.mean(sigma_term)
+
+        # precision terms
+        # note needs 0.5 twice, one here (inside self.prec_loss), one below
+        prec_term = self.prior_lambda * self.prec_loss(mean)
+
+        # combine terms
+        # ndims because we averaged over dimensions as well
+        return 0.5 * ndims * (sigma_term + prec_term)

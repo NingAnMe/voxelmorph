@@ -84,6 +84,7 @@ parser.add_argument('--int-steps', type=int, default=7,
                     help='number of integration steps (default: 7)')
 parser.add_argument('--int-downsize', type=int, default=2,
                     help='flow downsample factor for integration (default: 2)')
+parser.add_argument('--use-probs', action='store_true', help='enable probabilities')
 parser.add_argument('--bidir', action='store_true', help='enable bidirectional cost function')
 
 # loss hyperparameters
@@ -91,6 +92,8 @@ parser.add_argument('--image-loss', default='mse',
                     help='image reconstruction loss - can be mse or ncc (default: mse)')
 parser.add_argument('--lambda', type=float, dest='weight', default=0.01,
                     help='weight of deformation loss (default: 0.01)')
+parser.add_argument('--kl-lambda', type=float, default=10,
+                    help='prior lambda regularization for KL loss (default: 10)')
 args = parser.parse_args()
 
 bidir = args.bidir
@@ -187,8 +190,11 @@ else:
     weights = [1]
 
 # prepare deformation loss
-losses += [vxm.losses.Grad('l2', loss_mult=args.int_downsize).loss]
-weights += [args.weight]
+if args.use_probs:
+    losses += [vxm.losses.KL(args.kl_lambda).loss]
+else:
+    losses += [vxm.losses.Grad('l2', loss_mult=args.int_downsize).loss]
+    weights += [args.weight]
 
 # 记录loss值和最优epoch
 all_loss = list()  # 保存2个部分的loss
