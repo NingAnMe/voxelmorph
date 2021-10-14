@@ -327,7 +327,7 @@ if args.plot_image:
     imagesavefilename = args.plot_image
     save4image(lh_sphere_sub, lh_sphere_atlas, lh_sulc_sub, lh_sulc_atlas, lh_sphere_freesurfer, phi_prime, theta_prime,
                imagesavefilename)
-if args.plot_image_dif:
+if args.plot_image_dif_1 or args.plot_image_dif_2:
     imagesavefilenamedif_1 = args.plot_image_dif_1
     imagesavefilenamedif_2 = args.plot_image_dif_2
     dif_moving = xyz2degree(lh_sphere_sub, lh_sulc_sub)
