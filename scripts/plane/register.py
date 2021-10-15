@@ -210,6 +210,30 @@ def save4image(lh_sphere_sub, lh_sphere_atlas, lh_sulc_sub, lh_sulc_atlas, lh_sp
 
     plt.savefig(imagesavefilename)
 
+    imagesavefilename_moving = f"{imagesavefilename}_moving.jpg"
+    imagesavefilename_moved = f"{imagesavefilename}_moved.jpg"
+    imagesavefilename_freesurfer = f"{imagesavefilename}_freesurfer.jpg"
+
+    fig = plt.figure(figsize=(14, 7))
+    ax = fig.add_subplot(142)
+    ax.scatter(phi_sub.degree, theta_sub.degree, s=0.1,
+               c=lh_morph_sulc_sub)  # phi.degree: [-90, 90], theta.degree: [0, 360]
+    plt.title('Moving')
+    plt.savefig(imagesavefilename_moving)
+
+    fig = plt.figure(figsize=(14, 7))
+    ax = fig.add_subplot(142)
+    phi_prime = [math.degrees(p) for p in phi_prime]
+    thtea_prime = [math.degrees(t) for t in theta_prime]
+    ax.scatter(phi_prime, thtea_prime, s=0.1, c=lh_morph_sulc_sub)  # (256, 512)
+    plt.title('Moved')
+    plt.savefig(imagesavefilename_moved)
+
+    fig = plt.figure(figsize=(14, 7))
+    ax = fig.add_subplot(142)
+    ax.scatter(phi_reg.degree, theta_reg.degree, s=0.1, c=lh_morph_sulc_sub)  # (256, 512)
+    plt.title('Moved FreeSurfer')
+    plt.savefig(imagesavefilename_freesurfer)
 
 def xyz2degree(lh_sphere, lh_sulc):
     # coords: return (x, y, z) coordinates
@@ -315,8 +339,8 @@ if args.sphere_sub:
     c, faces = nib.freesurfer.read_geometry(args.sphere_sub)
     coords = np.empty(shape=c.shape)
     r, phi_prime, theta_prime = interpolate(warp, args.sphere_sub)
-    coords[:, 0], coords[:, 1], coords[:, 2] = spherical_to_cartesian(r, phi_prime, theta_prime)
-    nib.freesurfer.io.write_geometry(args.sphere_reg, coords, faces)
+    # coords[:, 0], coords[:, 1], coords[:, 2] = spherical_to_cartesian(r, phi_prime, theta_prime)
+    # nib.freesurfer.io.write_geometry(args.sphere_reg, coords, faces)
 
 if args.plot_image:
     lh_sphere_sub = args.sphere_sub
@@ -327,14 +351,14 @@ if args.plot_image:
     imagesavefilename = args.plot_image
     save4image(lh_sphere_sub, lh_sphere_atlas, lh_sulc_sub, lh_sulc_atlas, lh_sphere_freesurfer, phi_prime, theta_prime,
                imagesavefilename)
-if args.plot_image_dif:
+if args.plot_image_dif_1 or args.plot_image_dif_2:
     imagesavefilenamedif_1 = args.plot_image_dif_1
     imagesavefilenamedif_2 = args.plot_image_dif_2
     dif_moving = xyz2degree(lh_sphere_sub, lh_sulc_sub)
     dif_moved = xyz2degree2(phi_prime, theta_prime, lh_sulc_sub)
     dif_freesurfer = xyz2degree(lh_sphere_freesurfer, lh_sulc_sub)
     dif_moved_moving = dif_moved - dif_moving
-    print(np.nanmax(dif_moved_moving), np.nanmin(dif_moved_moving), np.nanmean(dif_moved_moving))
+    # print(np.nanmax(dif_moved_moving), np.nanmin(dif_moved_moving), np.nanmean(dif_moved_moving))
     dif_freesurfer_moved = dif_freesurfer - dif_moved
 
     plt.figure(figsize=(14, 7))
