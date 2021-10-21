@@ -91,6 +91,9 @@ parser.add_argument('--image-loss', default='mse',
                     help='image reconstruction loss - can be mse or ncc (default: mse)')
 parser.add_argument('--lambda', type=float, dest='weight', default=0.01,
                     help='weight of deformation loss (default: 0.01)')
+parser.add_argument('--use-probs', action='store_true', help='enable probabilities,use KL loss')
+parser.add_argument('--kl-lambda', type=float, default=10,
+                    help='prior lambda regularization for KL loss (default: 10)')
 args = parser.parse_args()
 
 bidir = args.bidir
@@ -99,7 +102,7 @@ bidir = args.bidir
 train_files = vxm.py.utils.read_file_list(args.img_list, prefix=args.img_prefix,
                                           suffix=args.img_suffix)
 val_files = vxm.py.utils.read_file_list(args.img_list_val, prefix=args.img_prefix,
-                                          suffix=args.img_suffix)
+                                        suffix=args.img_suffix)
 val_files_len = len(val_files)
 assert len(train_files) > 0, 'Could not find any training data.'
 
@@ -114,8 +117,8 @@ if args.atlas:
                                              batch_size=args.batch_size, bidir=args.bidir,
                                              add_feat_axis=add_feat_axis)
     generator_val = vxm.generators.scan_to_atlas(val_files, atlas,
-                                             batch_size=args.batch_size, bidir=args.bidir,
-                                             add_feat_axis=add_feat_axis)
+                                                 batch_size=args.batch_size, bidir=args.bidir,
+                                                 add_feat_axis=add_feat_axis)
 else:
     # scan-to-scan generator
     generator = vxm.generators.scan_to_scan(
@@ -187,7 +190,11 @@ else:
     weights = [1]
 
 # prepare deformation loss
-losses += [vxm.losses.Grad('l2', loss_mult=args.int_downsize).loss]
+if args.use_probs:
+    losses += [vxm.losses.KL(args.kl_lambda).loss]
+else:
+    losses += [vxm.losses.Grad('l2', loss_mult=args.int_downsize).loss]
+
 weights += [args.weight]
 
 # 记录loss值和最优epoch

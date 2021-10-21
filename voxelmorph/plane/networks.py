@@ -144,6 +144,33 @@ class Unet(nn.Module):
         return x
 
 
+class SampleNormalLogVar(nn.Module):
+    """
+    Gaussian sample given mean and log_variance
+
+    inputs: list of Tensors [mu, log_var]
+    outputs: Tensor sample from N(mu, sigma^2)
+    """
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        """
+        sample from a normal distribution
+
+        args should be [mu, log_var], where log_var is the log of the squared sigma
+
+        """
+        mu, log_var = x
+
+        # sample from N(0, 1)
+        noise = torch.randn(x.shape)
+
+        # make it a sample from N(mu, sigma^2)
+        z = mu + torch.exp(log_var / 2.0) * noise
+        return z
+
+
 class VxmDense(LoadableModel):
     """
     VoxelMorph network for (unsupervised) nonlinear registration between two images.
@@ -163,27 +190,27 @@ class VxmDense(LoadableModel):
                  src_feats=1,
                  trg_feats=1,
                  unet_half_res=False):
-        """ 
+        """
         Parameters:
             inshape: Input shape. e.g. (192, 192, 192)
             nb_unet_features: Unet convolutional features. Can be specified via a list of lists with
-                the form [[encoder feats], [decoder feats]], or as a single integer. 
-                If None (default), the unet features are defined by the default config described in 
+                the form [[encoder feats], [decoder feats]], or as a single integer.
+                If None (default), the unet features are defined by the default config described in
                 the unet class documentation.
-            nb_unet_levels: Number of levels in unet. Only used when nb_features is an integer. 
+            nb_unet_levels: Number of levels in unet. Only used when nb_features is an integer.
                 Default is None.
-            unet_feat_mult: Per-level feature multiplier. Only used when nb_features is an integer. 
+            unet_feat_mult: Per-level feature multiplier. Only used when nb_features is an integer.
                 Default is 1.
             nb_unet_conv_per_level: Number of convolutions per unet level. Default is 1.
-            int_steps: Number of flow integration steps. The warp is non-diffeomorphic when this 
+            int_steps: Number of flow integration steps. The warp is non-diffeomorphic when this
                 value is 0.
-            int_downsize: Integer specifying the flow downsample factor for vector integration. 
+            int_downsize: Integer specifying the flow downsample factor for vector integration.
                 The flow field is not downsampled when this value is 1.
             bidir: Enable bidirectional cost function. Default is False.
             use_probs: Use probabilities in flow field. Default is False.
             src_feats: Number of source image features. Default is 1.
             trg_feats: Number of target image features. Default is 1.
-            unet_half_res: Skip the last unet decoder upsampling. Requires that int_downsize=2. 
+            unet_half_res: Skip the last unet decoder upsampling. Requires that int_downsize=2.
                 Default is False.
         """
         super().__init__()
@@ -216,8 +243,13 @@ class VxmDense(LoadableModel):
 
         # probabilities are not supported in pytorch
         if use_probs:
-            raise NotImplementedError(
-                'Flow variance has not been implemented in pytorch - set use_probs to False')
+            self.use_probs = True
+            self.flow_logsigma = Conv(self.unet_model.final_nf, ndims, kernel_size=3, padding=1, bias=True)
+            self.flow_logsigma.weight = nn.Parameter(Normal(0, 1e-10).sample(self.flow_logsigma.weight.shape))
+            self.flow_logsigma.bias = nn.Parameter(torch.ones(self.flow.bias.shape) * -10)
+            self.sample_normal_log_val = SampleNormalLogVar()
+        else:
+            self.use_probs = False
 
         # configure optional resize layers (downsize)
         if not unet_half_res and int_steps > 0 and int_downsize > 1:
@@ -253,13 +285,20 @@ class VxmDense(LoadableModel):
         x = torch.cat([source, target], dim=1)
         x = self.unet_model(x)
         # transform into flow field
-        flow_field = self.flow(x)
+        flow_mean = self.flow(x)
         # resize flow for integration
-        pos_flow = flow_field
+        flow_params = None
+        if self.use_probs:
+            flow_logsigma = self.flow_logsigma(x)
+            flow_params = torch.cat((flow_mean, flow_logsigma))
+            flow_input = [flow_mean, flow_logsigma]
+            flow = self.sample_normal_log_val(flow_input)
+        else:
+            flow = flow_mean
+
+        pos_flow = flow
         if self.resize:
             pos_flow = self.resize(pos_flow)
-
-        preint_flow = pos_flow
 
         # negate flow for bidirectional model
         neg_flow = -pos_flow if self.bidir else None
@@ -277,11 +316,20 @@ class VxmDense(LoadableModel):
         # warp image with flow field
         y_source = self.transformer(source, pos_flow)
         y_target = self.transformer(target, neg_flow) if self.bidir else None
-        # return non-integrated flow field if training
-        if not registration:
-            return (y_source, y_target, preint_flow) if self.bidir else (y_source, preint_flow)
+
+        if self.bidir:
+            outputs = [y_source, y_target]
         else:
-            return y_source, pos_flow
+            outputs = [y_source]
+
+        if self.use_probs:
+            # compute loss on flow probabilities
+            outputs += [flow_params]
+        else:
+            # compute smoothness loss on pre-integrated warp
+            outputs += [pos_flow]
+
+        return outputs
 
 
 class ConvBlock(nn.Module):
