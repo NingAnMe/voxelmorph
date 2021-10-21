@@ -66,9 +66,8 @@ class NCC:
         cc = cross * cross / (I_var * J_var + 1e-5)
 
         if weights:
-            weight = np.abs(1 / np.sin(np.linspace(0 + 0.006, np.pi - 0.006, 256)))
-            weight = torch.from_numpy(weight)
-            weight = torch.unsqueeze(weight, 0).float().to("cuda")
+            weight = np.abs(1 / np.sin(np.linspace(0 + 0.006, np.pi - 0.006, y_pred.shape[-1])))
+            weight = torch.from_numpy(weight).to("cuda")
             cc *= weight
 
         return -torch.mean(cc)
@@ -81,9 +80,9 @@ class MSE:
 
     def loss(self, y_true, y_pred, weights=True):
         if weights:
-            weight = np.abs(1 / np.sin(np.linspace(0 + 0.006, np.pi - 0.006, 256)))
+            weight = np.abs(1 / np.sin(np.linspace(0 + 0.006, np.pi - 0.006, y_pred.shape[-1])))
             weight = torch.from_numpy(weight).float().to("cuda")
-            mse_loss = torch.mean(((y_true - y_pred) * weight) ** 2)
+            mse_loss = torch.mean(((y_true - y_pred) ** 2) * weight)
         else:
             mse_loss = torch.mean((y_true - y_pred) ** 2)
         return mse_loss
@@ -131,7 +130,7 @@ class Grad:
                 dx = dx * dx
 
             if weights:  # 1 / sin(phi)
-                weight = np.abs(1 / np.sin(np.linspace(0 + 0.006, np.pi - 0.006, 256)))
+                weight = np.abs(1 / np.sin(np.linspace(0 + 0.006, np.pi - 0.006, y_pred.shape[-1])))
                 weight = torch.from_numpy(weight).float().to("cuda")
                 dy = weight * dy
 
@@ -194,7 +193,7 @@ class KL:
         result = conv_fn(z, filt_tf, stride=1, padding='same')
         return result
 
-    def prec_loss(self, y_pred):
+    def prec_loss(self, y_pred, weight=None):
         """
         a more manual implementation of the precision matrix term
                 mu * P * mu    where    P = D - A
@@ -215,11 +214,14 @@ class KL:
             r = [d, *range(d), *range(d + 1, ndims + 2)]
             y = torch.permute(y_pred, r)
             df = y[1:, ...] - y[:-1, ...]
-            sm += torch.mean(df * df)
+            df = df * df
+            if weight is not None:
+                df = weight * df
+            sm += torch.mean(df)
 
         return 0.5 * sm / ndims
 
-    def loss(self, y_true, y_pred):
+    def loss(self, y_true, y_pred, weights=True):
         """
         KL loss
         y_pred is assumed to be D*2 channels: first D for mean, next D for logsigma
@@ -239,15 +241,26 @@ class KL:
         if self.flow_vol_shape is None:
             self.flow_vol_shape = y_pred.shape[2:]
         if self.D is None:
-            self.D = self._degree_matrix(self.flow_vol_shape)
+            self.D = self._degree_matrix(self.flow_vol_shape).to("cuda")
 
         # sigma terms
-        sigma_term = self.prior_lambda * self.D * torch.exp(log_sigma) - log_sigma
-        sigma_term = torch.mean(sigma_term)
+        if weights:  # 1 / sin(phi)
+            weight = np.abs(1 / np.sin(np.linspace(0 + 0.006, np.pi - 0.006, y_pred.shape[-1])))
+            weight = torch.from_numpy(weight).float().to("cuda")
+            sigma_term = self.prior_lambda * self.D * torch.exp(log_sigma) - log_sigma
+            sigma_term = weight * sigma_term
+            sigma_term = torch.mean(sigma_term)
 
-        # precision terms
-        # note needs 0.5 twice, one here (inside self.prec_loss), one below
-        prec_term = self.prior_lambda * self.prec_loss(mean)
+            # precision terms
+            # note needs 0.5 twice, one here (inside self.prec_loss), one below
+            prec_term = self.prior_lambda * self.prec_loss(mean, weight)
+        else:
+            sigma_term = self.prior_lambda * self.D * torch.exp(log_sigma) - log_sigma
+            sigma_term = torch.mean(sigma_term)
+
+            # precision terms
+            # note needs 0.5 twice, one here (inside self.prec_loss), one below
+            prec_term = self.prior_lambda * self.prec_loss(mean)
 
         # combine terms
         # ndims because we averaged over dimensions as well
