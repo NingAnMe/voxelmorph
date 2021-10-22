@@ -67,6 +67,7 @@ class NCC:
 
         if weights:
             weight = np.abs(1 / np.sin(np.linspace(0 + 0.006, np.pi - 0.006, y_pred.shape[-1])))
+            weight = np.clip(weight, 0, 10)
             weight = torch.from_numpy(weight).to("cuda")
             cc *= weight
 
@@ -81,6 +82,7 @@ class MSE:
     def loss(self, y_true, y_pred, weights=True):
         if weights:
             weight = np.abs(1 / np.sin(np.linspace(0 + 0.006, np.pi - 0.006, y_pred.shape[-1])))
+            weight = np.clip(weight, 0, 10)
             weight = torch.from_numpy(weight).float().to("cuda")
             mse_loss = torch.mean(((y_true - y_pred) ** 2) * weight)
         else:
@@ -131,6 +133,7 @@ class Grad:
 
             if weights:  # 1 / sin(phi)
                 weight = np.abs(1 / np.sin(np.linspace(0 + 0.006, np.pi - 0.006, y_pred.shape[-1])))
+                weight = np.clip(weight, 0, 10)
                 weight = torch.from_numpy(weight).float().to("cuda")
                 dy = weight * dy
 
@@ -246,6 +249,7 @@ class KL:
         # sigma terms
         if weights:  # 1 / sin(phi)
             weight = np.abs(1 / np.sin(np.linspace(0 + 0.006, np.pi - 0.006, y_pred.shape[-1])))
+            weight = np.clip(weight, 0, 10)
             weight = torch.from_numpy(weight).float().to("cuda")
             sigma_term = self.prior_lambda * self.D * torch.exp(log_sigma) - log_sigma
             sigma_term = weight * sigma_term
