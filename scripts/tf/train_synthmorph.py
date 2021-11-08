@@ -23,17 +23,13 @@ import neurite as ne
 import voxelmorph as vxm
 
 
-# disable eager execution
-tf.compat.v1.disable_eager_execution()
-
-
 # reference
 ref = (
-    'If you find this code useful, please cite:\n\n'
-    '\tLearning MRI Contrast-Agnostic Registration.\n'
-    '\tM Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca.\n'
-    '\tISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.\n'
-    '\thttps://doi.org/10.1109/ISBI48211.2021.9434113\n'
+    'If you find this script useful, please consider citing:\n\n'
+    '\tM Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca\n'
+    '\tSynthMorph: learning contrast-invariant registration without acquired images\n'
+    '\tIEEE Transactions on Medical Imaging (TMI), in press, 2021\n'
+    '\thttps://doi.org/10.1109/TMI.2021.3116879\n'
 )
 
 
@@ -58,11 +54,11 @@ p.add_argument('--vel-res', type=float, nargs='+', default=[16], help='SVF scale
 p.add_argument('--bias-std', type=float, default=0.3, help='std. dev. of bias field (default: 0.3)')
 p.add_argument('--bias-res', type=float, nargs='+', default=[40], help='bias scale (default: 40)')
 p.add_argument('--out-labels', default='fs_labels.npy', help='''
-    labels whose overlap to optimize (default: fs_labels.npy from  README)
+    labels whose overlap to optimize (default: fs_labels.npy from README)
 ''')
 
 # training parameters
-p.add_argument('--gpu', type=str, default=0, help='ID of GPU to use (default: 0)')
+p.add_argument('--gpu', type=str, default='0', help='ID of GPU to use (default: 0)')
 p.add_argument('--epochs', type=int, default=1500, help='training epochs (default: 1500)')
 p.add_argument('--batch-size', type=int, default=1, help='batch size (default: 1)')
 p.add_argument('--init-weights', help='optional weights file to initialize with')
@@ -143,8 +139,8 @@ gen_args = dict(
 reg_args = dict(
     inshape=in_shape,
     int_steps=arg.int_steps,
-    int_downsize=2,
-    unet_half_res=True,
+    int_resolution=2,
+    svf_resolution=2,
     nb_unet_features=(arg.enc, arg.dec),
 )
 

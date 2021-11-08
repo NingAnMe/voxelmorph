@@ -146,10 +146,10 @@ model = vxm.networks.HyperVxmDense(
     inshape=inshape,
     nb_unet_features=[enc_nf, dec_nf],
     int_steps=args.int_steps,
-    int_downsize=args.int_downsize,
+    int_resolution=args.int_downsize,
     src_feats=nfeats,
     trg_feats=nfeats,
-    unet_half_res=True
+    svf_resolution=2,
 )
 
 # load initial weights (if provided)
